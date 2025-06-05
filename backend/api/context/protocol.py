@@ -1,9 +1,7 @@
 import asyncio 
 from typing import Dict, Any, Optional, Union
-from backend.context.memory import SQLiteContextStorage, initialize_context_storage
+from .memory import SQLiteContextStorage, initialize_context_storage
 from backend.models.context import LearningContext, ContextMessage, UIState, VisualizationSpec, create_session_id
-
-# Import datetime for timestamps if not already handled by Pydantic defaults
 from datetime import datetime
 
 class ContextProtocol:
@@ -22,9 +20,6 @@ class ContextProtocol:
         if storage_backend == "sqlite":
             self._storage = SQLiteContextStorage()
             self._storage_backend_name = "sqlite"
-        # elif storage_backend == "redis":
-        #     self._storage = RedisContextStorage(...) # Placeholder for Redis
-        #     self._storage_backend_name = "redis"
         else:
             # Fallback to a simple in-memory dictionary if no valid backend specified
             print(f"Warning: Unknown or unsupported storage backend '{storage_backend}'. Using in-memory.")
