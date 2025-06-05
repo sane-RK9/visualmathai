@@ -1,5 +1,21 @@
-FastAPI
-uvicorn
-aiosqlite
-pydantic
-gradio
+gradio>=4.0.0
+uvicorn[standard]>=0.22.0
+anyio>=3.0.0 
+pydantic>=2.0.0 
+
+# LLM Clients
+openai>=1.0.0
+anthropic>=0.20.0 
+
+# Context Storage
+aiosqlite>=0.19.0 
+
+# Rendering Engines Dependencies
+plotly>=5.0.0 # 
+kaleido 
+manimce>=0.18.0 
+numpy>=1.20.0 
+
+python-dotenv>=1.0.0
+# aiofiles>=22.0.0 # For async file operations if complex file processing
+# tenacity>=8.0.0 # For retrying API calls

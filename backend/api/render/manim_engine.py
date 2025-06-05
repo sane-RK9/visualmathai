@@ -1,3 +1,8 @@
+import asyncio
+import hashlib
+from pathlib import Path
+from typing import Optional
+from manim import *
 class ManimRenderer:
     def __init__(self, output_dir: str = "runtime/cache/manim"):
         self.output_dir = Path(output_dir)

@@ -1,7 +1,7 @@
 import subprocess
 import tempfile
 import os
-from pathlib import Path
+from typing import Dict, Any
 
 class SafeCodeExecutor:
     def __init__(self):

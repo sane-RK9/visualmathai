@@ -1,15 +1,15 @@
 import gradio as gr
 import os
-import asyncio # Needed for running async initialization
-import traceback # For detailed error logging
-# Import the core backend logic components
-from backend.context.protocol import ContextProtocol, initialize_context_storage
-from backend.llm.router import LLMRouter
+import asyncio 
+import traceback
+from pathlib import Path 
+from backend.api.context.protocol import ContextProtocol, initialize_context_storage
+from backend.api.llm.router import LLMRouter
 from backend.models.context import LearningContext, ContextMessage, VisualizationSpec, create_session_id
-from backend.render.js_generator import InteractiveJSGenerator
-from backend.render.manim_engine import ManimRenderer
-from backend.render.plotly_generator import PlotlyGenerator
-# from backend_logic.sandbox.executor import SafeCodeExecutor # Import when implemented
+from backend.api.render.js_generator import InteractiveJSGenerator
+from backend.api.render.manim_engine import ManimRenderer
+from backend.api.render.plotly_generator import PlotlyGenerator
+from backend.api.sandbox.executor import SafeCodeExecutor
 
 # --- Global Backend Logic Instances ---
 # These will be initialized once at application startup
@@ -18,7 +18,7 @@ llm_router: LLMRouter = None
 js_generator: InteractiveJSGenerator = None
 manim_renderer: ManimRenderer = None
 plotly_generator: PlotlyGenerator = None
-# safe_executor: SafeCodeExecutor = None # Initialize when implemented
+safe_executor: SafeCodeExecutor = None
 
 # --- Asynchronous Initialization Function ---
 async def initialize_backend():

@@ -1,4 +1,5 @@
-# backend/app/api/render/js_generator.py
+from typing import Dict, Any, Optional
+
 class InteractiveJSGenerator:
     def __init__(self):
         self.templates = {

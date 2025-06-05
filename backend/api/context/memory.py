@@ -2,7 +2,7 @@ import json
 import aiosqlite
 from typing import Optional
 from pathlib import Path
-
+from datetime import datetime
 from backend.models.context import LearningContext, create_session_id
 
 # Define the database file path
