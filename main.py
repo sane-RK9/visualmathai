@@ -4,20 +4,18 @@ import asyncio
 import traceback
 from pathlib import Path 
 from backend.api.context.protocol import ContextProtocol, initialize_context_storage
-from backend.api.llm.router import LLMRouter
 from backend.models.context import LearningContext, ContextMessage, VisualizationSpec, create_session_id
 from backend.api.render.js_generator import InteractiveJSGenerator
 from backend.api.render.manim_engine import ManimRenderer
-from backend.api.render.plotly_generator import PlotlyGenerator
+#from backend.api.render.plotly_generator import PlotlyGenerator
 from backend.api.sandbox.executor import SafeCodeExecutor
 
 # --- Global Backend Logic Instances ---
 # These will be initialized once at application startup
 context_protocol: ContextProtocol = None
-llm_router: LLMRouter = None
 js_generator: InteractiveJSGenerator = None
 manim_renderer: ManimRenderer = None
-plotly_generator: PlotlyGenerator = None
+#plotly_generator: PlotlyGenerator = None
 safe_executor: SafeCodeExecutor = None
 
 # --- Asynchronous Initialization Function ---
@@ -30,10 +28,9 @@ async def initialize_backend():
     # Initialize protocol and renderers
     global context_protocol, llm_router, js_generator, manim_renderer, plotly_generator # Declare globals
     context_protocol = ContextProtocol(storage_backend="sqlite") # Use sqlite persistence
-    llm_router = LLMRouter()
     js_generator = InteractiveJSGenerator()
     manim_renderer = ManimRenderer()
-    plotly_generator = PlotlyGenerator()
+    #plotly_generator = PlotlyGenerator()
     # safe_executor = SafeCodeExecutor() # Initialize sandbox executor
 
     print("Backend components initialized.")
