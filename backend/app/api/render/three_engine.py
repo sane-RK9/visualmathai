@@ -1,7 +1,7 @@
 import hashlib
 from pathlib import Path
 from typing import Dict, Any
-from backend.models.context import VisualizationSpec
+from backend.app.models.context import VisualizationSpec
 
 class ThreeJSGenerator:
     """

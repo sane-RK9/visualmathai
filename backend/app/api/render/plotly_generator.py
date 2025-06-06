@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 import numpy as np
 from typing import Dict, Any
 from asteval import Interpreter 
-from backend.models.context import VisualizationSpec
+from backend.app.models.context import VisualizationSpec
 
 class PlotlyGenerator:
     """

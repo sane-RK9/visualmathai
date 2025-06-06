@@ -3,7 +3,7 @@ import aiosqlite
 from typing import Optional
 from pathlib import Path
 from datetime import datetime
-from backend.models.context import LearningContext, create_session_id
+from backend.app.models.context import LearningContext, create_session_id
 
 # Define the database file path
 # Use an environment variable or config for this in a real app

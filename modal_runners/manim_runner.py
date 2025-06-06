@@ -2,10 +2,12 @@ import modal
 from pathlib import Path
 import time
 
+dockerfile_path =  "D:"/"ai"/"visualmathai"/ "config" / "docker" / "manim_dockerfile"
+
 # --- Define the Modal App and Docker Image ---
 # We define a custom Docker image to ensure Manim and its dependencies (like FFmpeg) are installed.
 # This image will be built once and reused for fast cold starts.
-manim_image = modal.Image.from_dockerfile("manim_dockerfile") 
+manim_image = modal.Image.from_dockerfile(dockerfile_path) 
 
 app = modal.App(
     name="ViualMathAi-backend",

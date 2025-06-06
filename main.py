@@ -277,11 +277,11 @@ def create_interface():
         # Chat history display
         chatbot = gr.Chatbot(
             value=[], # Initialize with empty history
+            type='messages',
             height=400,
             label="Conversation",
             show_label=True,
             container=True,
-            bubble_full_width=False,
             elem_id="chatbot" # Add ID for CSS
         )
 
@@ -308,10 +308,10 @@ def create_interface():
 
         # Output area for explanation (Markdown) and Visualization (various components)
         # Use variables to control visibility dynamically
-        explanation_visible = gr.Variable(False) # Will be set True when explanation is available
-        html_viz_visible = gr.Variable(False)
-        plot_viz_visible = gr.Variable(False)
-        video_viz_visible = gr.Variable(False)
+        explanation_visible = gr.State(False) # Will be set True when explanation is available
+        html_viz_visible = gr.State(False)
+        plot_viz_visible = gr.State(False)
+        video_viz_visible = gr.State(False)
 
         # Explanation output area
         explanation_output = gr.Markdown(visible=explanation_visible, elem_classes="explanation-box")

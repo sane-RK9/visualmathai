@@ -2,7 +2,7 @@ import json
 from typing import Dict, Any
 from pathlib import Path
 import hashlib
-from backend.models.context import VisualizationSpec
+from backend.app.models.context import VisualizationSpec
 
 class InteractiveJSGenerator:
     """

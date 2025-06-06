@@ -1,7 +1,7 @@
 import asyncio 
 from typing import Dict, Any, Optional, Union
-from .memory import SQLiteContextStorage, initialize_context_storage
-from backend.models.context import LearningContext, ContextMessage, UIState, VisualizationSpec, create_session_id
+from  backend.app.api.context.memory import SQLiteContextStorage, initialize_context_storage
+from backend.app.models.context import LearningContext, ContextMessage, UIState, VisualizationSpec, create_session_id
 from datetime import datetime
 
 class ContextProtocol:

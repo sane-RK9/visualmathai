@@ -2,7 +2,7 @@ import modal
 import hashlib
 from pathlib import Path
 from typing import Dict, Any
-from backend.models.context import VisualizationSpec
+from backend.app.models.context import VisualizationSpec
 
 try:
     render_manim_scene_modal = modal.Function.lookup(
@@ -16,7 +16,6 @@ except modal.exception.NotFoundError:
     print("Warning: Modal function 'render_manim_scene' not found. "
           "Ensure the Modal app is deployed by running 'modal deploy modal_runners/manim_runner.py'. "
           "Manim rendering will be disabled.")
-`   `
 
 class ManimRenderer:
     """
