@@ -1,9 +1,9 @@
 import os
 import json
-import re # To extract JSON from text
+import re 
 from typing import Dict, Any, List, Union
-from backend.llm.router import LLMProvider
-from backend.models.context import LearningContext, ContextMessage, VisualizationSpec
+from .router import LLMProvider
+from backend.app.models.context import LearningContext, ContextMessage, VisualizationSpec
 import anthropic
 
 class ClaudeProvider(LLMProvider):

@@ -3,19 +3,19 @@ import os
 import asyncio 
 import traceback
 from pathlib import Path 
-from backend.api.context.protocol import ContextProtocol, initialize_context_storage
-from backend.models.context import LearningContext, ContextMessage, VisualizationSpec, create_session_id
-from backend.api.render.js_generator import InteractiveJSGenerator
-from backend.api.render.manim_engine import ManimRenderer
-#from backend.api.render.plotly_generator import PlotlyGenerator
-from backend.api.sandbox.executor import SafeCodeExecutor
+from backend.app.api.context.protocol import ContextProtocol, initialize_context_storage
+from backend.app.models.context import LearningContext, ContextMessage, VisualizationSpec, create_session_id
+from backend.app.api.render.js_generator import InteractiveJSGenerator
+from backend.app.api.render.manim_engine import ManimRenderer
+from backend.app.api.render.plotly_generator import PlotlyGenerator
+from backend.app.api.sandbox.executor import SafeCodeExecutor
 
 # --- Global Backend Logic Instances ---
 # These will be initialized once at application startup
 context_protocol: ContextProtocol = None
 js_generator: InteractiveJSGenerator = None
 manim_renderer: ManimRenderer = None
-#plotly_generator: PlotlyGenerator = None
+plotly_generator: PlotlyGenerator = None
 safe_executor: SafeCodeExecutor = None
 
 # --- Asynchronous Initialization Function ---
@@ -30,8 +30,8 @@ async def initialize_backend():
     context_protocol = ContextProtocol(storage_backend="sqlite") # Use sqlite persistence
     js_generator = InteractiveJSGenerator()
     manim_renderer = ManimRenderer()
-    #plotly_generator = PlotlyGenerator()
-    # safe_executor = SafeCodeExecutor() # Initialize sandbox executor
+    plotly_generator = PlotlyGenerator()
+    safe_executor = SafeCodeExecutor() # Initialize sandbox executor
 
     print("Backend components initialized.")
 
@@ -192,7 +192,7 @@ async def handle_user_input(user_message: str, history: list, session_id: str):
             # Embed the generated HTML file in an iframe
             # The src must be relative to the Gradio app's root or static files mount point
             # Assumes 'runtime/cache' is mounted at '/static'
-            if viz_content: # Check if html_path was generated
+            if viz_content: #
                  html_comp_update = gr.HTML(value=f'<iframe src="{viz_content}" width="100%" height="400px" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>', visible=True)
             else:
                  # Handle case where JS generation failed but no exception was raised
@@ -408,7 +408,7 @@ async def main():
 
     interface.launch(
         server_name="0.0.0.0", # Listen on all interfaces
-        server_port=7860,     # Default Gradio port
+        server_port=7860,     
         share=False,          # Set to True to get a shareable link
         debug=True,           # Set to False for production
         # Configure static file serving for local testing
@@ -417,5 +417,4 @@ async def main():
 
 # --- Entry Point ---
 if __name__ == "__main__":
-    # Run the async main function
     asyncio.run(main())

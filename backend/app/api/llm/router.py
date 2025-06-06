@@ -1,8 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Union
 import os 
-from backend.models.context import LearningContext, VisualizationSpec
-# Import the concrete provider classes
+from backend.app.models.context import LearningContext, VisualizationSpec
 from .openai_client import OpenAIProvider
 from .claude_client import ClaudeProvider
 
@@ -18,11 +17,6 @@ class LLMProvider(ABC):
         Messages should be formatted appropriate for the specific LLM API.
         """
         pass
-
-    # Removed the generate_code abstract method, as the LLM is now expected
-    # to return a structured spec via generate_response.
-    # If specific providers have helper methods, they can implement them,
-    # but it's not part of the required interface for the router.
 
 
 class LLMRouter:
@@ -80,5 +74,3 @@ class LLMRouter:
         # Call the single generate_response method
         return await provider.generate_response(messages=messages, context=context)
 
-    # No need for a separate route_code method anymore, as generate_response
-    # handles both chat and structured spec output.

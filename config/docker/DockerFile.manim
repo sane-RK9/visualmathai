@@ -1,0 +1,16 @@
+FROM python:3.11-slim
+
+# Install system dependencies required by Manim
+# (LaTeX for typesetting, FFmpeg for video)
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    texlive-latex-base \
+    texlive-latex-extra \
+    texlive-fonts-recommended \
+    texlive-fonts-extra \
+    dvipng \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Manim and other Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt

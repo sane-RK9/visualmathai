@@ -1,151 +1,153 @@
-## VisualMathAi
+# VisualMathAI
 
-An interactive web application powered by Large Language Models to create dynamic, visual explanations of concepts. Ask questions, explore topics, and interact with generated visualizations like graphs, simulations, or animations.
+An advanced, interactive web application that combines a conversational AI with dynamic visualization capabilities. Users can explore complex mathematical and scientific concepts by asking questions and requesting the AI to generate on-the-fly graphs, animations, and interactive diagrams.
 
-This project is designed with deployment on platforms like Hugging Face Spaces in mind, leveraging Gradio for the user interface.
+The project features a sophisticated three-tier architecture: a lightweight Gradio frontend, a robust FastAPI backend for application logic, and a scalable Modal cloud backend for secure, resource-intensive tasks like LLM inference and Manim rendering.
 
 ## ✨ Features
 
-*   **LLM Interaction:** Chat with an AI assistant powered by models like OpenAI GPT, Anthropic Claude, or local LLMs.
-*   **Dynamic Visualizations:** Request the AI to generate interactive graphs, plots, or animations based on your queries.
-*   **Interactive Controls:** Manipulate parameters using sliders and inputs in real-time to understand concepts dynamically.
-*   **Multi-Modal Output:** Supports generating interactive JavaScript visualizations, Plotly plots, and Manim animations.
-*   **Stateful Context:** The application remembers your conversation history and the state of visualizations, allowing for follow-up questions and manipulations.
-*   **Safe Code Execution:** Generated code is handled securely to prevent risks.
+*   **Conversational AI Interface:** Chat with an AI assistant powered by state-of-the-art models from OpenAI or Anthropic.
+*   **On-Demand Visualization:** Request the AI to generate a variety of visual aids based on your prompts.
+*   **Multi-Modal Output:**
+    *   **Interactive JS:** Dynamic charts with real-time controls (sliders, inputs).
+    *   **Plotly:** High-quality static and interactive 2D/3D plots.
+    *   **Manim:** Broadcast-quality mathematical animations rendered as videos.
+*   **Persistent Sessions:** Conversation history and context are saved, allowing for follow-up questions and multi-turn interactions.
+*   **Scalable & Secure Backend:** Heavy tasks are offloaded to a serverless cloud backend (Modal), ensuring the application remains responsive and secure. Sandboxed execution for rendering protects the system.
 
 ## 🏗️ Architecture
 
-The application follows a layered architecture, with the core logic centered around the user's interaction context.
+The application is built on a modern, distributed three-tier architecture for scalability, security, and clear separation of concerns.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                           Gradio App                              │
-│  (UI Definition, Function Handlers, Maps Logic Output to Gradio  │
-│   Components)                                                   │
-└─────────────┬───────────────────────────────────────────────────┘
-              │ Direct Python Calls
-┌─────────────┼───────────────────────────────────────────────────┐
-│                      Backend Logic Modules                      │
-│  (LLM Integration, Context Management, Rendering Logic, Cache,  │
-│   Sandbox)                                                      │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │ (Optional) External Service Call
-              ┌─────────────┴─────────────┐
-              │    (e.g., Dedicated Manim │
-              │       Rendering Service)  │
-              └───────────────────────────┘
+┌──────────────────────────┐       ┌───────────────────────────────┐       ┌──────────────────────────────────┐
+│  Gradio Frontend Client  │       │   FastAPI Backend Server      │       │     Modal Serverless Backend     │
+│  (main.py)               ├─HTTP─►│   (backend/)                  ├─RPC──►│       (modal_runners/)           │
+│                          │       │                               │       │                                  │
+│ - Renders UI             │       │ - Manages Context (SQLite)    │       │ - Runs LLM Inference (on GPU)    │
+│ - Sends User Input       │       │ - Orchestrates Calls to Modal │       │ - Renders Manim (Sandboxed)      │
+│ - Displays Visuals       │       │ - Serves Static Assets        │       │                                  │
+└──────────────────────────┘       └───────────────────────────────┘       └──────────────────────────────────┘
 ```
 
-*   **Gradio App:** Handles the user interface, takes user input, triggers backend logic functions, and displays the results using Gradio components (`gr.Textbox` for chat, `gr.HTML` for interactive JS, `gr.Plot`, `gr.Video`).
-*   **Backend Logic Modules:** A collection of Python modules containing the core intelligence:
-    *   **LLM:** Communicates with various LLM providers, crafts prompts with context, and processes responses, potentially generating structured specifications for visualizations.
-    *   **Context:** Manages the state for each user session, including conversation history, UI variable values, and references to generated outputs.
-    *   **Render:** Contains logic to translate LLM specifications into concrete visualization outputs (e.g., generates HTML/JS code snippets, prepares data for Plotly, constructs Manim scene commands).
-    *   **Cache:** Stores results of expensive operations (like Manim renders) to improve performance.
-    *   **Sandbox:** Provides a safe environment for executing generated code snippets.
+1.  **Gradio Frontend (`main.py`):** A lightweight client application that provides the user interface. It makes HTTP API calls to the FastAPI backend and is responsible for rendering the final text and visualizations.
+2.  **FastAPI Backend (`backend/`):** The central application server. It exposes a REST API, manages session state and context using a SQLite database, and acts as an orchestrator. It does **not** perform heavy computations itself; instead, it calls the Modal backend.
+3.  **Modal Serverless Backend (`modal_runners/`):** A set of powerful, ephemeral cloud functions for resource-intensive tasks.
+    *   **LLM Inference:** An endpoint that securely handles API calls to OpenAI/Anthropic, keeping API keys out of the main backend server. Can be deployed on GPUs for large local models.
+    *   **Manim Rendering:** A sandboxed endpoint that takes Manim scene code, renders it in a secure container with all necessary dependencies (LaTeX, FFmpeg), and returns the resulting video.
 
 ## 📁 Project Structure
 
 ```
-visual-learning-app-gradio/
-├── app/                         # Main Gradio application script(s)
-├── backend_logic/               # Modular Python code for core logic (LLM, Context, Render)
-├── runtime/                     # Directories for cached outputs and sandbox files
-├── scripts/                     # Helper scripts (e.g., Manim templates)
-├── config/                      # Configuration files (e.g., Docker)
-├── .env.example                 # Example environment variables
+visual-learning-app/
+├── main.py                 # Gradio Frontend Client application
+├── requirements.txt        # Dependencies for the Gradio Frontend (gradio, httpx)
+│
+├── backend/                # FastAPI Backend Server application
+│   ├── app/                # Main source code for the backend
+│   │   ├── api/            # API endpoint logic and business logic modules
+│   │   ├── core/           # Core components like configuration
+│   │   ├── models/         # Pydantic data models
+│   │   └── main.py         # FastAPI app entry point
+│   └── requirements.txt    # Dependencies for the Backend (fastapi, modal, etc.)
+│
+├── modal_runners/          # Code for functions deployed to Modal
+│   ├── manim_runner.py     # Defines the remote Manim rendering function
+│   └── llm_inference.py    # Defines the remote LLM inference function
+│
+├── config/                 # Deployment configurations
+│   ├── docker/
+│   └── nginx/
+│
+├── runtime/                # Directory for runtime-generated files (cache, db)
+│
+├── .env                    # Local environment variables (API keys)
 ├── README.md
-├── requirements.txt             # Python dependencies
-└── docker-compose.yml           # (Optional) For local development
+└── setup.sh                # Automated setup script
 ```
 
-## 🚀 Quick Start
+## 🚀 Getting Started
 
-Follow these steps to get the application running locally.
+This project involves three main components: the Gradio Frontend, the FastAPI Backend, and the Modal Backend.
 
 ### Prerequisites
 
-*   Python 3.8+
-*   `pip` package manager
-*   Optional: Docker and Docker Compose
+*   Python 3.9+
+*   [Modal CLI](https://modal.com/docs/guide/local-development#installing-the-`modal`-cli) installed and configured (`modal token new`).
+*   Manim system dependencies (for local testing, if desired): [FFmpeg and LaTeX](https://docs.manim.community/en/stable/installation.html).
+*   An active `.env` file with API keys (see next step).
 
-### 1. Clone the Repository
+### Local Development Setup
+
+Follow these steps to run the full application locally.
+
+**1. Initial Setup**
+
+First, clone the repository and run the setup script. This will prepare your environment variables and install Python dependencies for both frontend and backend.
 
 ```bash
 git clone <repository_url>
-cd visual-learning-app-gradio
+cd visual-learning-app
+./setup.sh
 ```
+After running, **edit the newly created `.env` file** to add your `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY`.
 
-### 2. Set up Environment Variables
+**2. Deploy the Modal Backend**
 
-Create a `.env` file in the root directory by copying the example:
+The resource-intensive parts of the application run on Modal's serverless platform. Deploy them with a single command:
 
 ```bash
-cp .env.example .env
+# This command deploys all functions defined in the modal_runners directory.
+# It will build a custom Docker image with Manim on the first run.
+modal deploy modal_runners/llm_inference.py
 ```
+*(Note: Since both runner files look up the same app name, deploying one should be sufficient to register all functions under that app.)*
 
-Edit the `.env` file to add your API keys (e.g., `OPENAI_API_KEY`) and configure other settings as needed.
+**3. Run the FastAPI Backend Server**
 
-### 3. Install Dependencies
-
-Install the required Python packages:
+In a new terminal, navigate to the `backend` directory, activate the virtual environment, and start the Uvicorn server.
 
 ```bash
-pip install -r requirements.txt
+# Terminal 1: FastAPI Backend
+cd backend/
+source ../venv/bin/activate  # Activate the shared venv from the root
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 4. Run the Application
+**4. Run the Gradio Frontend Client**
 
-Run the main Gradio application script:
+Finally, in another terminal, start the Gradio UI.
 
 ```bash
-python app/gradio_app.py
+# Terminal 2: Gradio Frontend
+source venv/bin/activate  # Activate the venv in the root directory
+python main.py
 ```
 
-The application will start, and you will typically see a local URL (e.g., `http://127.0.0.1:7860`) where you can access the interface in your web browser.
+You can now access the Gradio interface at `http://127.0.0.1:7860` (or the URL provided by Gradio).
 
-### Running with Docker (Optional)
+## ☁️ Deployment
 
-If you have Docker and Docker Compose installed, you can build and run the application using the provided `docker-compose.yml`:
+*   **Modal:** The backend functions are deployed via the `modal deploy` command.
+*   **FastAPI Backend & Gradio Frontend:** These can be deployed as standard web applications using Docker, cloud services like Google Cloud Run, AWS App Runner, or on a VM behind an Nginx reverse proxy. The provided `Dockerfile.backend` and `docker-compose.yml` can be used as a starting point.
 
-```bash
-docker-compose up --build
-```
+## 🛡️ Security
 
-This will build the necessary images and start the services. Access the application via the port configured in your Nginx or service definition (commonly `http://localhost`).
-
-## ⚙️ Configuration
-
-Application settings are managed via environment variables loaded from the `.env` file using the `backend_logic.core.config` module. Refer to `.env.example` for available variables.
-
-## ☁️ Deployment on Hugging Face Spaces
-
-This application is designed for easy deployment on Hugging Face Spaces. Simply push your code to a new Space configured with the "Gradio" SDK. Ensure your `requirements.txt` is correct and your `.env` secrets are added via the Spaces settings. The `app/gradio_app.py` script will be automatically detected and run by the Gradio SDK.
-
-## 🛡️ Security Considerations
-
-Generated code (especially JavaScript for interactive visualizations) is a potential security risk. The `backend_logic.sandbox` module and the frontend's handling of generated code should prioritize safety. Displaying generated HTML/JS within a sandboxed `<iframe>` is the recommended approach to isolate potential malicious code from the main application.
+*   **API Keys:** Handled securely using Modal Secrets. Keys in the local `.env` file are only used for `modal deploy` and are not stored in the FastAPI backend or the Gradio client.
+*   **Code Execution:** Manim code is executed within a `modal.Sandbox`, an isolated, secure container, preventing it from accessing the host system.
+*   **Web Security:** Standard security practices like CORS configuration are applied in the FastAPI backend.
 
 ## ⏭️ Future Enhancements
 
-*   **Session Persistence:** Implement database integration (e.g., SQLite, PostgreSQL, Redis) in `backend_logic.context` to save and restore user sessions and history.
-*   **Edit Mode:** Allow users to view and modify the LLM-generated code before execution.
-*   **Export Functionality:** Add options to export visualizations (e.g., save plots, download Manim videos).
-*   **Advanced Rendering:** Integrate more sophisticated rendering libraries or custom visualization components.
-*   **User Authentication:** Implement user accounts to manage personal histories and settings.
-*   **Streaming LLM Output:** Integrate Gradio's streaming features for real-time LLM response generation.
+*   **Streaming LLM Output:** Implement WebSocket support between the FastAPI backend and Gradio frontend to stream LLM responses in real-time.
+*   **User Authentication:** Add an authentication layer to manage user-specific session histories.
+*   **Advanced Caching:** Implement a Redis cache for LLM responses and other frequently accessed data to reduce latency and cost.
+*   **Edit & Rerun:** Allow users to view and edit the generated Manim/JS code and rerun the visualization.
 
-##🤝 Contributing
+## 🤝 Contributing
 
-We welcome contributions! Please see the contributing guidelines.
+We welcome contributions! Please fork the repository and submit a pull request with your changes. (TODO: Add a `CONTRIBUTING.md` file with detailed guidelines).
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE.md file for details.
-
-## 🙏 Acknowledgments
-
-*   Hugging Face and Gradio for the excellent platform and tools.
-*   The developers of Manim, Plotly, and other visualization libraries.
-*   The researchers and engineers behind the powerful Large Language Models.
-
+This project is licensed under the MIT License - see the `LICENSE.md` file for details.

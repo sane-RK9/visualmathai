@@ -1,7 +1,7 @@
 import os
 from typing import Dict, Any, List, Union
 from .router import LLMProvider
-from backend.models.context import LearningContext, ContextMessage, VisualizationSpec
+from backend.app.models.context import LearningContext, ContextMessage, VisualizationSpec
 import openai
 import json
 import re # To extract JSON from text
