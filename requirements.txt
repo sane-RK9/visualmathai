@@ -17,7 +17,7 @@ aiosqlite>=0.19.0
 plotly>=5.0.0 # 
 kaleido
 asteval>=0.9.31 
-manimce>=0.18.0 
+manim>=0.18.0 
 numpy>=1.20.0 
 
 python-dotenv>=1.0.0
