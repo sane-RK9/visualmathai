@@ -1,420 +1,163 @@
 import gradio as gr
+import httpx 
+import uuid
+import json
 import os
-import asyncio 
-import traceback
-from pathlib import Path 
-from backend.app.api.context.protocol import ContextProtocol, initialize_context_storage
-from backend.app.models.context import LearningContext, ContextMessage, VisualizationSpec, create_session_id
-from backend.app.api.render.js_generator import InteractiveJSGenerator
-from backend.app.api.render.manim_engine import ManimRenderer
-from backend.app.api.render.plotly_generator import PlotlyGenerator
-from backend.app.api.sandbox.executor import SafeCodeExecutor
 
-# --- Global Backend Logic Instances ---
-# These will be initialized once at application startup
-context_protocol: ContextProtocol = None
-js_generator: InteractiveJSGenerator = None
-manim_renderer: ManimRenderer = None
-plotly_generator: PlotlyGenerator = None
-safe_executor: SafeCodeExecutor = None
+# --- Configuration ---
+# The Gradio app reads the backend's URL from an environment variable.
+# This makes it flexible for both local development and deployment.
+# In docker-compose, this is set to 'http://backend:8000'.
+# For local testing without Docker, it defaults to 'http://127.0.0.1:8000'.
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+API_PREFIX = "/api/v1" 
 
-# --- Asynchronous Initialization Function ---
-async def initialize_backend():
-    """Initializes all backend components, including async ones like database."""
-    print("Initializing backend components...")
-    # Initialize context storage (e.g., SQLite DB)
-    await initialize_context_storage()
+# --- API Client Function ---
+async def send_request_to_backend(session_id: str, message: str) -> dict:
+    """
+    Sends the user's message to the FastAPI backend and returns the parsed JSON response.
+    This function handles all communication with the backend.
+    """
+    api_url = f"{BACKEND_URL}{API_PREFIX}/chat/{session_id}"
+    payload = {"message": message, "provider": "openai"}  # The provider could be a UI option later
 
-    # Initialize protocol and renderers
-    global context_protocol, llm_router, js_generator, manim_renderer, plotly_generator # Declare globals
-    context_protocol = ContextProtocol(storage_backend="sqlite") # Use sqlite persistence
-    js_generator = InteractiveJSGenerator()
-    manim_renderer = ManimRenderer()
-    plotly_generator = PlotlyGenerator()
-    safe_executor = SafeCodeExecutor() # Initialize sandbox executor
+    print(f"Frontend: Sending request to {api_url}")
+    try:
+        # Set a generous timeout to allow for LLM and rendering latency.
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            response = await client.post(api_url, json=payload)
+            # This will raise an exception for HTTP error codes (4xx or 5xx).
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        # Handle API errors returned from the backend (e.g., 500 Internal Server Error)
+        try:
+            error_detail = e.response.json().get("detail", e.response.text)
+        except json.JSONDecodeError:
+            error_detail = e.response.text
+        print(f"API Error: {e.response.status_code} - {error_detail}")
+        return {"error": f"Backend API Error ({e.response.status_code}): {error_detail}"}
+    except httpx.RequestError as e:
+        # Handle network-level errors (e.g., cannot connect to the backend)
+        error_msg = f"Network Error: Unable to connect to backend at {api_url}. Is the backend server running?"
+        print(f"{error_msg} Details: {e}")
+        return {"error": error_msg}
+    except Exception as e:
+        print(f"An unexpected error occurred in the API client: {e}")
+        return {"error": f"An unexpected error occurred: {str(e)}"}
 
-    print("Backend components initialized.")
-
-# --- Gradio Interaction Function ---
+# --- Gradio UI and Event Handlers ---
 
 async def handle_user_input(user_message: str, history: list, session_id: str):
     """
-    Handles user input, interacts with LLM and renderers, updates context,
-    and returns outputs for the Gradio UI.
+    The main Gradio event handler. It's triggered by user actions.
+    It calls the backend and then yields updates for the UI components.
     """
-    if not user_message:
-        return history, gr.Markdown(visible=False, value=""), gr.HTML(visible=False, value=""), gr.Plot(visible=False, value=None), gr.Video(visible=False, value=None)
+    if not user_message.strip():
+        # Do nothing if the input is empty
+        return
 
-    if not session_id:
-        session_id = create_session_id()
-        print(f"New session created: {session_id}")
+    # Append user message to the UI immediately for a responsive feel
+    history.append([user_message, None])
+    # Yield the history to update the chatbot with the user's message
+    yield history, gr.update(), gr.update(), gr.update(), gr.update()
 
-    # 1. Get current context
-    try:
-        context = await context_protocol.get_context(session_id)
-    except Exception as e:
-        error_msg = f"Error loading context for session {session_id}: {e}"
-        print(error_msg)
-        # Update history with error
-        history.append([user_message, error_msg])
-        return history, gr.Markdown(visible=True, value=error_msg), gr.HTML(visible=False, value=""), gr.Plot(visible=False, value=None), gr.Video(visible=False, value=None)
+    # Call our API client function to get the response from the backend
+    response_data = await send_request_to_backend(session_id, user_message)
+    
+    # Check for an error in the response
+    if "error" in response_data:
+        history[-1][1] = f"⚠️ **Error:** {response_data['error']}"
+        yield history, gr.update(), gr.update(), gr.update(), gr.update()
+        return
 
+    # Process the successful response from the backend
+    explanation = response_data.get("explanation", "*No explanation provided.*")
+    visualization = response_data.get("visualization") # This can be None
 
-    # 2. Add user message to context
-    # We add the user message to history *before* calling LLM so it appears immediately
-    # Then add to backend context for persistence and LLM
-    history.append([user_message, None]) # Add user message immediately to Gradio history
-    await context_protocol.add_message(session_id, "user", user_message)
-
-
-    # 3. Call LLM
-    # Prepare messages for LLM (using messages from context)
-    # Convert ContextMessage Pydantic objects to dicts for LLM provider
-    llm_messages = [{"role": msg.role, "content": msg.content} for msg in context.messages]
-
-    # Get response from LLM (this might be text or a VisualizationSpec)
-    llm_output = None # Initialize llm_output outside try block
-    try:
-        llm_output = await llm_router.route_request(
-            provider_name="openai", # Or "claude", "local" - could be a UI parameter
-            messages=llm_messages,
-            context=context # Pass the full context object
-        )
-    except ValueError as e:
-         # Handle specific errors like unknown provider
-         error_msg = f"LLM Configuration Error: {e}"
-         print(error_msg)
-         history[-1][1] = error_msg # Update last assistant message placeholder
-         # Return components to update
-         return history, gr.Markdown(visible=True, value=error_msg), gr.HTML(visible=False, value=""), gr.Plot(visible=False, value=None), gr.Video(visible=False, value=None)
-    except Exception as e:
-        error_msg = f"Error during LLM request: {e}\n{traceback.format_exc()}" # Include traceback
-        print(error_msg)
-        history[-1][1] = error_msg # Update last assistant message placeholder
-        # Return components to update
-        return history, gr.Markdown(visible=True, value=error_msg), gr.HTML(visible=False, value=""), gr.Plot(visible=False, value=None), gr.Video(visible=False, value=None)
-
-
-    # --- Process LLM Output ---
-    explanation_text = ""
-    visualization_output_details = None # Store details about the viz output (type, content)
-    viz_spec = None # Store the received spec if any
-
-    if isinstance(llm_output, VisualizationSpec):
-        viz_spec = llm_output
-        explanation_text = viz_spec.explanation # Use explanation from the spec
-
-        try:
-            # Determine which renderer to use based on the spec type
-            if viz_spec.type == "interactive_js":
-                # Generate HTML/JS and get the path to the file
-                render_result = await js_generator.generate_interactive_visualization(viz_spec)
-                # render_result is expected to be {"html_path": "..."}
-                visualization_output_details = {"type": "html", "content": render_result.get("html_path")}
-                print(f"Generated interactive JS visualization file: {visualization_output_details['content']}")
-
-            elif viz_spec.type == "plotly":
-                # Generate Plotly figure object
-                render_result = await plotly_generator.generate_plotly_visualization(viz_spec)
-                # render_result is a plotly.graph_objects.Figure
-                visualization_output_details = {"type": "plotly", "content": render_result}
-                print("Generated Plotly visualization object.")
-
-            elif viz_spec.type == "manim":
-                 # Generate Manim video and get the path to the file
-                 # The spec.content for Manim is expected to have {"scene_code": "..."}
-                 render_result_path = await manim_renderer.render_scene(viz_spec.content)
-                 # render_result_path is expected to be the path relative to runtime/cache
-                 visualization_output_details = {"type": "video", "content": f"/static/{render_result_path}"} # Prepend /static for Gradio serving
-                 print(f"Generated Manim video path: {visualization_output_details['content']}")
-
-            elif viz_spec.type == "text_explanation":
-                 # No visualization needed, just text
-                 explanation_text = viz_spec.explanation
-                 visualization_output_details = None
-                 print("LLM requested text explanation only.")
-
-            else:
-                 # Handle unknown visualization types returned by LLM
-                 explanation_text = f"LLM requested unknown visualization type: {viz_spec.type}.\n\n" + explanation_text
-                 visualization_output_details = None
-                 print(f"LLM returned unknown visualization type: {viz_spec.type}")
-
-        except Exception as e:
-            # Handle errors during the rendering process
-            error_msg = f"Error generating visualization ({viz_spec.type}): {e}\n{traceback.format_exc()}"
-            print(error_msg)
-            explanation_text = f"An error occurred while creating the visualization: {e}\n\n" + explanation_text # Prepend error to explanation
-            visualization_output_details = None # Ensure no partial visualization is shown
-
-
-        # Update context with the assistant's explanation and visualization details
-        # Add the explanation as an assistant message
-        await context_protocol.add_message(session_id, "assistant", explanation_text)
-
-        # Update context with the spec and render output
-        await context_protocol.update_context(session_id, {
-             "last_visualization_spec": viz_spec, # Store the Pydantic spec object
-             "last_render_output": visualization_output_details.get('content') if visualization_output_details else None # Store the path/figure/etc.
-        })
-
-    else: # LLM returned plain text (not a VisualizationSpec instance)
-        explanation_text = llm_output
-        visualization_output_details = None
-        # Create a basic text_explanation spec for context history
-        viz_spec = VisualizationSpec(type="text_explanation", explanation=explanation_text)
-
-        # Add assistant message to context
-        await context_protocol.add_message(session_id, "assistant", explanation_text)
-        await context_protocol.update_context(session_id, {
-            "last_visualization_spec": viz_spec,
-            "last_render_output": None
-        })
-
-
-    # --- Update Gradio UI Components ---
-
-    # Update the last assistant message in Gradio history with the final explanation text
-    history[-1][1] = explanation_text
-
-    # Prepare components to update based on visualization_output_details
-    explanation_comp_update = gr.Markdown(value=explanation_text, visible=True)
-    html_comp_update = gr.HTML(value="", visible=False)
-    plot_comp_update = gr.Plot(value=None, visible=False)
-    video_comp_update = gr.Video(value=None, visible=False)
-
-
-    if visualization_output_details:
-        viz_type = visualization_output_details["type"]
-        viz_content = visualization_output_details["content"]
-
+    # Update the chatbot with the final text explanation from the assistant
+    history[-1][1] = explanation
+    
+    # Prepare updates for the visualization components
+    html_update = gr.HTML(visible=False)
+    plot_update = gr.Plot(visible=False)
+    video_update = gr.Video(visible=False)
+    
+    if visualization:
+        viz_type = visualization.get("type")
         if viz_type == "html":
-            # Embed the generated HTML file in an iframe
-            # The src must be relative to the Gradio app's root or static files mount point
-            # Assumes 'runtime/cache' is mounted at '/static'
-            if viz_content: #
-                 html_comp_update = gr.HTML(value=f'<iframe src="{viz_content}" width="100%" height="400px" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>', visible=True)
-            else:
-                 # Handle case where JS generation failed but no exception was raised
-                 explanation_comp_update.value += "\n\n*Error: Could not generate interactive HTML.*"
-
+            # Construct the full URL to the static asset served by the backend
+            iframe_url = BACKEND_URL + visualization.get("url", "")
+            html_update = gr.HTML(
+                value=f'<iframe src="{iframe_url}" width="100%" height="400px" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>',
+                visible=True
+            )
         elif viz_type == "plotly":
-            # Gradio Plot component directly accepts a Plotly figure object
-            if viz_content: # Check if figure object was created
-                 plot_comp_update = gr.Plot(value=viz_content, visible=True)
-            else:
-                 explanation_comp_update.value += "\n\n*Error: Could not generate Plotly figure.*"
-
-
+            # The backend sends the figure as a JSON string, so we parse it
+            figure_json = json.loads(visualization.get("figure", "{}"))
+            plot_update = gr.Plot(value=figure_json, visible=True)
         elif viz_type == "video":
-            # Gradio Video component accepts a file path or URL
-            # Use the static URL path determined during rendering
-            if viz_content: # Check if video path was returned
-                video_comp_update = gr.Video(value=viz_content, visible=True)
-            else:
-                 explanation_comp_update.value += "\n\n*Error: Could not generate video.*"
+            # Construct the full URL to the video served by the backend
+            video_url = BACKEND_URL + visualization.get("url", "")
+            video_update = gr.Video(value=video_url, visible=True)
 
-
-    # Return the updated components.
-    # The order MUST match the order in the .change() or .click() output list.
-    return history, explanation_comp_update, html_comp_update, plot_comp_update, video_comp_update, session_id
-
-
-# --- Gradio Interface Layout ---
+    # Yield the final state with all updates
+    yield history, html_update, plot_update, video_update, session_id
 
 def create_interface():
-    """Creates the Gradio Blocks interface."""
-    # Use a state object to hold the session ID.
-    # Initial value is generated when the Gradio state component is created.
-    # We will pass this state component to the handler function.
+    """Creates and configures the Gradio Blocks interface."""
+    with gr.Blocks(title="VisualMathAI", theme=gr.themes.Soft(), css=".gradio-container { max-width: 1200px !important; margin: auto; }") as app:
+        gr.Markdown("# 🧠 VisualMathAI")
+        gr.Markdown("An interactive AI assistant for visual learning. Ask a question or request a visualization below.")
 
-    with gr.Blocks(
-        title="Visual Learning App",
-        theme=gr.themes.Soft(), # Use a pleasant theme
-        css="""
-        .gradio-container {
-            max-width: 1200px;
-            margin: auto;
-            padding: 20px;
-        }
-        .chat-container {
-            height: 500px; /* Make chatbot height predictable */
-        }
-        #chatbot {
-            height: 400px !important; /* Ensure chatbot has fixed height */
-            overflow-y: auto !important; /* Add scroll if needed */
-        }
-        .gr-plot {
-            height: 400px !important; /* Give plot a standard height */
-        }
-         .gr-video {
-            max-height: 400px; /* Limit video height */
-            width: 100%; /* Make video responsive */
-         }
-        iframe {
-            width: 100%;
-            height: 400px; /* Give iframe a standard height */
-            border: none; /* Remove default iframe border */
-        }
-        .explanation-box {
-            margin-top: 15px;
-            padding: 15px;
-            border: 1px solid #e0e0e0;
-            border-radius: 5px;
-            background-color: #f9f9f9;
-        }
-        """
-    ) as visual_learning_app:
+        # This state object holds the unique session ID for the browser tab.
+        session_id_state = gr.State(value=str(uuid.uuid4()))
 
-        gr.Markdown("# ✨ Visual Learning App")
-        gr.Markdown("Ask questions and visualize concepts using AI.")
-
-        # Use gr.State to manage the session ID across interactions
-        # The value will be passed to the handler function and returned.
-        # We initialize it with a new ID using lambda
-        session_id_state = gr.State(value=create_session_id)
-
-        # Chat history display
-        chatbot = gr.Chatbot(
-            value=[], # Initialize with empty history
-            type='messages',
-            height=400,
-            label="Conversation",
-            show_label=True,
-            container=True,
-            elem_id="chatbot" # Add ID for CSS
-        )
-
-        # Input area
+        chatbot = gr.Chatbot(label="Conversation", height=500, bubble_full_width=False)
+        message_input = gr.Textbox(placeholder="e.g., 'What is a Fourier Transform?' or 'Plot the function y = x^3 - 2*x'", label="Your Message")
+        
         with gr.Row():
-            with gr.Column(scale=4):
-                message_input = gr.Textbox(
-                    placeholder="Ask me anything or request a mathematical visualization (e.g., 'Plot sin(x) from -pi to pi' or 'What is linear regression?')...",
-                    label="Message",
-                    lines=2,
-                    container=False # Use container=False as it's in a Row/Column already
-                )
-
-            with gr.Column(scale=1):
-                # File upload is removed for simplicity in this direct integration,
-                # as handling file content passing to LLM is complex.
-                # If needed, this would require reading file content in Gradio handler
-                # and passing it to LLM via messages/tools/etc.
-                # file_upload = gr.File(label="Attach Files", file_count="multiple")
-                send_btn = gr.Button("Send", variant="primary", scale=1)
-
-        # Clear chat button
-        clear_btn = gr.Button("Clear Chat")
-
-        # Output area for explanation (Markdown) and Visualization (various components)
-        # Use variables to control visibility dynamically
-        explanation_visible = gr.State(False) # Will be set True when explanation is available
-        html_viz_visible = gr.State(False)
-        plot_viz_visible = gr.State(False)
-        video_viz_visible = gr.State(False)
-
-        # Explanation output area
-        explanation_output = gr.Markdown(visible=explanation_visible, elem_classes="explanation-box")
-
-        # Visualization output area - Use a column to stack potential visualization outputs
-        # Only one should be made visible at a time by the handler function.
-        with gr.Column(visible=True) as visualization_output_area:
-             # gr.HTML to display interactive JS visualizations (embedded in an iframe)
-             html_visualization = gr.HTML(visible=html_viz_visible)
-
-             # gr.Plot for Plotly visualizations
-             plotly_visualization = gr.Plot(visible=plot_viz_visible)
-
-             # gr.Video for Manim animations
-             video_visualization = gr.Video(visible=video_viz_visible)
-
-             # Add other potential output components here (e.g., gr.DataFrame for tables)
-
-
-        # --- Event Handlers ---
-
-        # Define the outputs that the handle_user_input function will return IN ORDER
-        output_components = [
-            chatbot,             # Updated history
-            explanation_output,  # Updated explanation text and visibility (will be True if text exists)
-            html_visualization,  # Updated HTML content and visibility
-            plotly_visualization,# Updated Plotly figure and visibility
-            video_visualization, # Updated Video path and visibility
-            session_id_state     # Ensure session ID state is returned (optional, but good practice)
+            send_btn = gr.Button("Send", variant="primary")
+            clear_btn = gr.Button("Clear Chat")
+            
+        with gr.Accordion("🔬 Visualization Output", open=True):
+            html_visualization = gr.HTML(visible=False)
+            plotly_visualization = gr.Plot(visible=False)
+            video_visualization = gr.Video(visible=False)
+        
+        # Define the outputs for the event handler IN ORDER
+        outputs = [
+            chatbot,
+            html_visualization,
+            plotly_visualization,
+            video_visualization,
+            session_id_state
         ]
-
-        # When the send button is clicked
+        
+        # Wire up events
         send_btn.click(
             fn=handle_user_input,
             inputs=[message_input, chatbot, session_id_state],
-            outputs=output_components
-        )
+            outputs=outputs
+        ).then(lambda: "", outputs=message_input) # Clear input after send
 
-        # When the user presses Enter in the textbox
         message_input.submit(
             fn=handle_user_input,
             inputs=[message_input, chatbot, session_id_state],
-            outputs=output_components
-        )
+            outputs=outputs
+        ).then(lambda: "", outputs=message_input)
 
-        # Clear chat functionality
-        # This clears the Gradio chatbot history and resets the session context
-        async def clear_chat_handler(session_id):
-             print(f"Clearing session: {session_id}")
-             if session_id:
-                 try:
-                     await context_protocol.delete_context(session_id)
-                 except Exception as e:
-                     print(f"Error deleting session context: {e}")
-             # Return empty history and a *new* session ID
-             new_session_id = create_session_id()
-             print(f"New session created after clear: {new_session_id}")
+        def clear_chat_handler():
+            # Simply clear the UI and generate a new session ID for a fresh start
+            new_session_id = str(uuid.uuid4())
+            return [], gr.HTML(visible=False), gr.Plot(visible=False), gr.Video(visible=False), new_session_id
 
-             # Also hide visualization components
-             return [], gr.Markdown(visible=False, value=""), gr.HTML(visible=False, value=""), gr.Plot(visible=False, value=None), gr.Video(visible=False, value=None), new_session_id
-
-        clear_btn.click(
-            fn=clear_chat_handler,
-            inputs=[session_id_state], # Need the current session ID to delete
-            outputs=[chatbot, explanation_output, html_visualization, plotly_visualization, video_visualization, session_id_state]
-        )
-
-    return visual_learning_app
-
-# --- Application Startup ---
-
-# We need to run the async initialization before launching the Gradio app.
-# Gradio's launch function runs the app loop, so we need an entry point
-# that handles the async setup first.
-
-async def main():
-    """Main function to initialize backend and launch Gradio."""
-    await initialize_backend()
-    interface = create_interface()
-
-    # Define static file serving.
-    # In HF Spaces, you might configure this via the Space settings,
-    # mapping a directory (like runtime/cache) to /static.
-    # For local development, use the static_files parameter in launch.
-    static_dir = Path("runtime/cache")
-    static_dir.mkdir(parents=True, exist_ok=True) # Ensure static cache directory exists
-
-    # Manim and HTML generators save files inside runtime/cache/manim/ and runtime/cache/generated_assets/
-    # These should be served under /static/manim and /static/generated_assets respectively.
-    # The renderers return paths relative to runtime/cache, like "manim/video.mp4" or "generated_assets/html/viz.html".
-    # When constructing the URL in handle_user_input, we prepend "/static/".
-
-    print(f"Serving static files from {static_dir} under the /static/ route.")
-
-    interface.launch(
-        server_name="0.0.0.0", # Listen on all interfaces
-        server_port=7860,     
-        share=False,          # Set to True to get a shareable link
-        debug=True,           # Set to False for production
-        # Configure static file serving for local testing
-        static_files={"/static": str(static_dir)}
-    )
+        clear_btn.click(fn=clear_chat_handler, outputs=outputs)
+    return app
 
 # --- Entry Point ---
 if __name__ == "__main__":
-    asyncio.run(main())
+    interface = create_interface()
+    # Launch on 0.0.0.0 to be accessible within a Docker container.
+    # The port 7860 is what we expose in docker-compose.yml.
+    interface.launch(server_name="0.0.0.0", server_port=7860)

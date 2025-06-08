@@ -1,37 +1,41 @@
+# config/docker/docker-compose.yml
 version: '3.8'
+
 services:
-  frontend:
-    build:
-      context: ../../frontend
-      dockerfile: ../config/docker/Dockerfile.frontend
-    ports:
-      - "3000:3000"
-    environment:
-      - REACT_APP_API_URL=http://localhost:8000
-    
+  # The FastAPI backend service
   backend:
     build:
-      context: ../../backend
+      context: ../../backend  # Build using the backend directory
       dockerfile: ../config/docker/Dockerfile.backend
     ports:
+      # Expose port 8000 internally for the frontend to connect to.
+      # This port is NOT exposed to the public internet directly.
       - "8000:8000"
     environment:
+      # We will pass secrets via the Hugging Face Space secrets manager.
+      # These environment variables must be set in your Space's settings.
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL}
+      - MODAL_TOKEN_ID=${MODAL_TOKEN_ID}
+      - MODAL_TOKEN_SECRET=${MODAL_TOKEN_SECRET}
     volumes:
+      # Mount the runtime directory to persist cache/db across restarts.
       - ../../runtime:/app/runtime
-    
-  redis:
-    image: redis:alpine
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  # The Gradio frontend service
+  frontend:
+    build:
+      context: ../..  # Build from the root directory
+      dockerfile: ./config/docker/Dockerfile.frontend # Use a dedicated Dockerfile
     ports:
-      - "6379:6379"
-    
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-    volumes:
-      - ../nginx/nginx.conf:/etc/nginx/nginx.conf
+      # This is the main port for the Space. HF will route public traffic here.
+      - "7860:7860"
+    environment:
+      # This tells the Gradio app how to find the backend service.
+      # 'backend' is the service name defined above, which Docker networking resolves.
+      - BACKEND_URL=http://backend:8000
     depends_on:
-      - frontend
-      - backend
+      - backend # Ensures the backend starts before the frontend

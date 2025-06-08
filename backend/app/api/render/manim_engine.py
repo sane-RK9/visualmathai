@@ -6,7 +6,7 @@ from backend.app.models.context import VisualizationSpec
 
 try:
     render_manim_scene_modal = modal.Function.lookup(
-        "ViualMathAi-backend-backend", "render_manim_scene"
+        "ViualMathAi-backend", "render_manim_scene"
     )
     MODAL_AVAILABLE = True
     print("Successfully connected to Modal function 'render_manim_scene'.")

@@ -1,152 +1,188 @@
 # VisualMathAI
 
-An advanced, interactive web application that combines a conversational AI with dynamic visualization capabilities. Users can explore complex mathematical and scientific concepts by asking questions and requesting the AI to generate on-the-fly graphs, animations, and interactive diagrams.
+<p align="center">
+  <a href="https://huggingface.co/spaces/huggingface-projects/agents-mcp-hackathon">
+    <img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Agents--MCP%20Hackathon-blue" alt="Hugging Face Agents-MCP Hackathon">
+  </a>
+</p>
 
-The project features a sophisticated three-tier architecture: a lightweight Gradio frontend, a robust FastAPI backend for application logic, and a scalable Modal cloud backend for secure, resource-intensive tasks like LLM inference and Manim rendering.
+<p align="center">
+  <strong>An advanced, interactive web application that combines a conversational AI with dynamic visualization capabilities.</strong>
+  <br />
+  Ask questions, explore complex concepts, and watch as the AI generates on-the-fly graphs, animations, and interactive learning widgets.
+</p>
+
+<p align="center">
+  <a href="#-project-context">Project Context</a> •
+  <a href="#-features">Features</a> •
+  <a href="#-architecture-the-model-context-protocol">Architecture</a> •
+  <a href="#-technology-stack">Tech Stack</a> •
+  <a href="#-getting-started">Getting Started</a> •
+  <a href="#-acknowledgments">Acknowledgments</a>
+</p>
+
+---
+
+## 💡 Project Context
+
+This project was initially developed for the **Hugging Face Agents & Model-Context Protocol (MCP) Hackathon**.
+
+The core architecture is a direct implementation of the MCP philosophy: treating the Large Language Model (LLM) not just as a text generator, but as an intelligent **agentic planner**. The LLM's role is to understand user intent and generate a structured `ToolCall`—a formal plan—which the backend system then orchestrates and executes using specialized tools like renderers and sandboxed environments. This approach forms the foundation of the application's advanced capabilities.
 
 ## ✨ Features
 
-*   **Conversational AI Interface:** Chat with an AI assistant powered by state-of-the-art models from OpenAI or Anthropic.
-*   **On-Demand Visualization:** Request the AI to generate a variety of visual aids based on your prompts.
-*   **Multi-Modal Output:**
-    *   **Interactive JS:** Dynamic charts with real-time controls (sliders, inputs).
-    *   **Plotly:** High-quality static and interactive 2D/3D plots.
-    *   **Manim:** Broadcast-quality mathematical animations rendered as videos.
-*   **Persistent Sessions:** Conversation history and context are saved, allowing for follow-up questions and multi-turn interactions.
-*   **Scalable & Secure Backend:** Heavy tasks are offloaded to a serverless cloud backend (Modal), ensuring the application remains responsive and secure. Sandboxed execution for rendering protects the system.
+*   **Conversational AI Interface:** Chat with an expert AI assistant powered by state-of-the-art models from OpenAI or Anthropic.
+*   **Agent-Like Orchestration:** The AI acts as a "planner," deciding whether to respond with text or to build a complex, interactive "Learning Widget" to explain a concept, all governed by the MCP.
+*   **Composite Visualizations:** Generates multi-asset "Learning Widgets" that combine videos, plots, and interactive controls into a single, cohesive experience.
+*   **Multi-Modal Rendering Engine:**
+    *   **Manim:** For broadcast-quality mathematical animations.
+    *   **Plotly:** For rich, interactive 2D/3D charts.
+    *   **Interactive JS/HTML:** For custom-built, controllable diagrams and simulations.
+*   **Scalable & Secure Cloud Backend:** Heavy-duty tasks like LLM inference and video rendering are offloaded to **Modal Labs**, ensuring the application is responsive, secure, and can scale on demand.
+*   **Persistent Sessions:** Leverages a SQLite backend to save and manage conversation history and the state of generated widgets across sessions.
+*   **Sandboxed Execution:** All generated code for rendering is executed in secure, isolated containers on Modal, protecting the system's integrity.
 
-## 🏗️ Architecture
+## 🏗️ Architecture: The Model-Context Protocol (MCP)
 
-The application is built on a modern, distributed three-tier architecture for scalability, security, and clear separation of concerns.
+The project is built on a modern, distributed three-tier architecture orchestrated by the **Model-Context Protocol (MCP)**. This protocol defines the data structures and conventions for state management, making the system robust and extensible.
 
 ```
-┌──────────────────────────┐       ┌───────────────────────────────┐       ┌──────────────────────────────────┐
-│  Gradio Frontend Client  │       │   FastAPI Backend Server      │       │     Modal Serverless Backend     │
-│  (main.py)               ├─HTTP─►│   (backend/)                  ├─RPC──►│       (modal_runners/)           │
-│                          │       │                               │       │                                  │
-│ - Renders UI             │       │ - Manages Context (SQLite)    │       │ - Runs LLM Inference (on GPU)    │
-│ - Sends User Input       │       │ - Orchestrates Calls to Modal │       │ - Renders Manim (Sandboxed)      │
-│ - Displays Visuals       │       │ - Serves Static Assets        │       │                                  │
-└──────────────────────────┘       └───────────────────────────────┘       └──────────────────────────────────┘
+┌──────────────────────────┐      ┌───────────────────────────┐      ┌──────────────────────────────────┐
+│  Gradio Frontend Client  │      │   FastAPI Backend Server  │      │     Modal Serverless Backend     │
+│  (Renders UI & Widgets)  ├─HTTP─►│  (MCP Orchestrator)       ├─RPC──►│     (MCP Tool Executor)          │
+└──────────────────────────┘      └───────────────────────────┘      └──────────────────────────────────┘
 ```
 
-1.  **Gradio Frontend (`main.py`):** A lightweight client application that provides the user interface. It makes HTTP API calls to the FastAPI backend and is responsible for rendering the final text and visualizations.
-2.  **FastAPI Backend (`backend/`):** The central application server. It exposes a REST API, manages session state and context using a SQLite database, and acts as an orchestrator. It does **not** perform heavy computations itself; instead, it calls the Modal backend.
-3.  **Modal Serverless Backend (`modal_runners/`):** A set of powerful, ephemeral cloud functions for resource-intensive tasks.
-    *   **LLM Inference:** An endpoint that securely handles API calls to OpenAI/Anthropic, keeping API keys out of the main backend server. Can be deployed on GPUs for large local models.
-    *   **Manim Rendering:** A sandboxed endpoint that takes Manim scene code, renders it in a secure container with all necessary dependencies (LaTeX, FFmpeg), and returns the resulting video.
+1.  **Gradio Frontend (`main.py`):** A lightweight client that provides the UI. It makes HTTP API calls to the FastAPI backend and is responsible for rendering the final text and "Learning Widgets."
+
+2.  **FastAPI Backend (`backend/`):** The central application server and **MCP Orchestrator**. It manages session state, but its primary role is to interpret `ToolCall` plans generated by the LLM. It calls the appropriate Modal functions to execute the plan, updates the session context, and assembles the final response for the frontend.
+
+3.  **Modal Serverless Backend (`modal_runners/`):** A set of powerful, secure, serverless functions that act as **MCP Tool Executors**.
+    *   **LLM Function (`llm_inference.py`):** The MCP "Planner." Its sole job is to decide which "tool" to use and return a structured `ToolCall` JSON object.
+    *   **Widget Executor (`widget_executor.py`):** A sandboxed function that receives asset generation tasks (e.g., "render this Manim scene") and executes them in a secure environment.
+
+### How the Model-Context Protocol Works
+
+The MCP is the core of the system's intelligence. Instead of just generating text, the LLM generates a structured **`ToolCall`** object, which is an explicit instruction for the backend.
+
+**Example Flow:**
+1.  **User:** "Show me how sine waves build a square wave."
+2.  **FastAPI** sends this to the **Modal LLM Function**.
+3.  **Modal LLM** returns a `ToolCall` with `tool_name: "generate_learning_widget"` and a detailed plan. This plan includes the explanation text, a list of Manim scenes to render, and the HTML/JS code for an interactive player.
+4.  **FastAPI** receives and validates this plan.
+5.  **FastAPI** sends the list of Manim scenes to the **Modal Widget Executor Function**.
+6.  **Modal Widget Executor** renders the videos in a secure sandbox and returns the video data.
+7.  **FastAPI** saves the videos to its cache, generates URLs, and injects these URLs into the HTML/JS player code from the plan.
+8.  **FastAPI** sends the final, fully-formed widget to the **Gradio Frontend**.
+9.  **Gradio** renders the interactive widget in an iframe for the user.
+
+## 💻 Technology Stack
+
+| Category            | Technology                                           |
+| ------------------- | ---------------------------------------------------- |
+| **Frontend**        | Gradio                                               |
+| **Backend Server**  | FastAPI, Uvicorn                                     |
+| **Cloud Backend**   | Modal Labs                                           |
+| **LLM Interaction** | OpenAI, Anthropic SDKs                               |
+| **Data Modeling**   | Pydantic                                             |
+| **Database**        | SQLite with `aiosqlite`                              |
+| **Rendering**       | Manim, Plotly, HTML5 Canvas                          |
+| **Containerization**| Docker, Docker Compose                               |
+| **HTTP Client**     | `httpx`                                              |
 
 ## 📁 Project Structure
 
 ```
-visual-learning-app/
+visual-math-ai/
 ├── main.py                 # Gradio Frontend Client application
-├── requirements.txt        # Dependencies for the Gradio Frontend (gradio, httpx)
+├── requirements.txt        # Dependencies for the Gradio Frontend
 │
 ├── backend/                # FastAPI Backend Server application
 │   ├── app/                # Main source code for the backend
-│   │   ├── api/            # API endpoint logic and business logic modules
-│   │   ├── core/           # Core components like configuration
-│   │   ├── models/         # Pydantic data models
-│   │   └── main.py         # FastAPI app entry point
-│   └── requirements.txt    # Dependencies for the Backend (fastapi, modal, etc.)
+│   └── requirements.txt    # Dependencies for the Backend
 │
 ├── modal_runners/          # Code for functions deployed to Modal
-│   ├── manim_runner.py     # Defines the remote Manim rendering function
-│   └── llm_inference.py    # Defines the remote LLM inference function
 │
-├── config/                 # Deployment configurations
-│   ├── docker/
-│   └── nginx/
+├── config/                 # Deployment configurations (Docker, Nginx)
 │
-├── runtime/                # Directory for runtime-generated files (cache, db)
+├── runtime/                # Directory for runtime files (cache, db)
 │
-├── .env                    # Local environment variables (API keys)
-├── README.md
+├── .env                    # Local environment variables
 └── setup.sh                # Automated setup script
 ```
 
 ## 🚀 Getting Started
 
-This project involves three main components: the Gradio Frontend, the FastAPI Backend, and the Modal Backend.
+This project involves three main components that need to be running: the Gradio Frontend, the FastAPI Backend, and the Modal Backend.
 
 ### Prerequisites
 
 *   Python 3.9+
-*   [Modal CLI](https://modal.com/docs/guide/local-development#installing-the-`modal`-cli) installed and configured (`modal token new`).
-*   Manim system dependencies (for local testing, if desired): [FFmpeg and LaTeX](https://docs.manim.community/en/stable/installation.html).
-*   An active `.env` file with API keys (see next step).
+*   [Modal CLI](https://modal.com/docs/guide/local-development#installing-the-`modal`-cli) installed and authenticated (`modal token new`).
+*   Docker & Docker Compose.
+*   An active `.env` file with API keys.
 
 ### Local Development Setup
 
-Follow these steps to run the full application locally.
-
 **1. Initial Setup**
 
-First, clone the repository and run the setup script. This will prepare your environment variables and install Python dependencies for both frontend and backend.
+Clone the repository and run the setup script to prepare your environment.
 
 ```bash
-git clone <repository_url>
-cd visual-learning-app
+git clone https://github.com/your-username/visual-math-ai.git
+cd visual-math-ai
 ./setup.sh
 ```
-After running, **edit the newly created `.env` file** to add your `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY`.
+After running, **edit the newly created `.env` file** to add your required API keys (`OPENAI_API_KEY`, `MODAL_TOKEN_ID`, etc.).
 
 **2. Deploy the Modal Backend**
 
-The resource-intensive parts of the application run on Modal's serverless platform. Deploy them with a single command:
+Deploy the serverless functions to Modal's platform with a single command:
 
 ```bash
-# This command deploys all functions defined in the modal_runners directory.
-# It will build a custom Docker image with Manim on the first run.
-modal deploy modal_runners/llm_inference.py
+# This command finds all @app.function decorators and deploys them.
+modal deploy modal_runners/widget_executor.py
 ```
-*(Note: Since both runner files look up the same app name, deploying one should be sufficient to register all functions under that app.)*
 
-**3. Run the FastAPI Backend Server**
+**3. Run the Local Services**
 
-In a new terminal, navigate to the `backend` directory, activate the virtual environment, and start the Uvicorn server.
+We recommend using Docker Compose to run the backend and frontend services, as it handles the networking between them.
 
 ```bash
-# Terminal 1: FastAPI Backend
-cd backend/
-source ../venv/bin/activate  # Activate the shared venv from the root
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+# This will build the containers and start both services.
+docker-compose -f config/docker/docker-compose.yml up --build
 ```
 
-**4. Run the Gradio Frontend Client**
+You can now access the Gradio interface at `http://localhost:7860`.
 
-Finally, in another terminal, start the Gradio UI.
+## ⚙️ Configuration
 
-```bash
-# Terminal 2: Gradio Frontend
-source venv/bin/activate  # Activate the venv in the root directory
-python main.py
-```
-
-You can now access the Gradio interface at `http://127.0.0.1:7860` (or the URL provided by Gradio).
-
-## ☁️ Deployment
-
-*   **Modal:** The backend functions are deployed via the `modal deploy` command.
-*   **FastAPI Backend & Gradio Frontend:** These can be deployed as standard web applications using Docker, cloud services like Google Cloud Run, AWS App Runner, or on a VM behind an Nginx reverse proxy. The provided `Dockerfile.backend` and `docker-compose.yml` can be used as a starting point.
+*   **Environment Variables:** All configuration, especially secrets like API keys and Modal tokens, is managed via a `.env` file. Refer to `.env.example` for the full list of required variables.
+*   **Modal Secrets:** For production deployments, secrets should be stored directly on the Modal platform for maximum security.
 
 ## 🛡️ Security
 
-*   **API Keys:** Handled securely using Modal Secrets. Keys in the local `.env` file are only used for `modal deploy` and are not stored in the FastAPI backend or the Gradio client.
-*   **Code Execution:** Manim code is executed within a `modal.Sandbox`, an isolated, secure container, preventing it from accessing the host system.
-*   **Web Security:** Standard security practices like CORS configuration are applied in the FastAPI backend.
-
-## ⏭️ Future Enhancements
-
-*   **Streaming LLM Output:** Implement WebSocket support between the FastAPI backend and Gradio frontend to stream LLM responses in real-time.
-*   **User Authentication:** Add an authentication layer to manage user-specific session histories.
-*   **Advanced Caching:** Implement a Redis cache for LLM responses and other frequently accessed data to reduce latency and cost.
-*   **Edit & Rerun:** Allow users to view and edit the generated Manim/JS code and rerun the visualization.
+*   **API Keys:** Handled securely using Modal Secrets, ensuring they are never exposed in the client-facing backend or frontend code.
+*   **Sandboxed Rendering:** All asset generation (Manim, etc.) occurs within `modal.Sandbox`, a secure, isolated container environment, mitigating risks from executing LLM-generated code.
+*   **Web Security:** Standard practices like CORS are configured in the FastAPI backend to protect the API.
 
 ## 🤝 Contributing
 
-We welcome contributions! Please fork the repository and submit a pull request with your changes. (TODO: Add a `CONTRIBUTING.md` file with detailed guidelines).
+We welcome contributions! Whether it's improving the MCP, adding a new renderer, or enhancing the UI, your input is valuable. Please fork the repository, make your changes in a separate branch, and submit a pull request with a clear description of your work.
+
+## 🙏 Acknowledgments
+
+This project stands on the shoulders of giants and was inspired by cutting-edge concepts in the AI and open-source communities.
+
+*   **Anthropic's Claude:** The advanced tool-use and agentic reasoning capabilities of Claude models were a direct inspiration for the **Model-Context Protocol (MCP)** architecture used in this project. The idea of an LLM acting as a "planner" that generates structured instructions for a system of tools is central to our design.
+
+*   **Manim Community:** This project would not be possible without the incredible **Manim** mathematical animation engine. We extend our thanks to Grant Sanderson (3Blue1Brown) for creating it and to the vibrant Manim Community for maintaining and expanding its capabilities.
+
+*   **Modal Labs:** The ability to securely sandbox code and scale resource-intensive tasks like rendering and inference is powered by the serverless infrastructure of **Modal**. Their platform made this complex distributed architecture feasible and efficient.
+
+*   **Hugging Face:** The initial prototype and design philosophy were developed for the **Hugging Face Agents & MCP Hackathon**, which provided the motivation and conceptual framework for this project.
+
+*   **Open Source Ecosystem:** We are deeply grateful to the developers and maintainers of FastAPI, Gradio, Pydantic, Plotly, and the many other open-source libraries that form the backbone of this application.
 
 ## 📄 License
 

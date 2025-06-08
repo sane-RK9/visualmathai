@@ -1,0 +1,16 @@
+# config/docker/Dockerfile.backend
+FROM python:3.11-slim
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Copy the backend requirements file and install dependencies
+COPY ./requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the entire backend application code into the container
+COPY . /app
+
+# The command to run the app is specified in docker-compose.yml
+# Expose the port the app runs on (for documentation)
+EXPOSE 8000

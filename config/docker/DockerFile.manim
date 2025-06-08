@@ -1,7 +1,25 @@
+# Build stage
+FROM python:3.11-slim as builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    pkg-config \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libgdk-pixbuf2.0-dev \
+    libffi-dev \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Runtime stage
 FROM python:3.11-slim
 
-# Install system dependencies required by Manim
-# (LaTeX for typesetting, FFmpeg for video)
+# Install only runtime dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     texlive-latex-base \
@@ -9,8 +27,27 @@ RUN apt-get update && apt-get install -y \
     texlive-fonts-recommended \
     texlive-fonts-extra \
     dvipng \
+    # Runtime libraries (not dev packages)
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Manim and other Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy installed Python packages from builder stage
+COPY --from=builder /root/.local /root/.local
+
+# Make sure scripts in .local are usable
+ENV PATH=/root/.local/bin:$PATH
+
+# Set working directory
+WORKDIR /app
+
+# Copy application code
+COPY . .
+
+# Expose port if needed
+EXPOSE 8000
+
+# Default command
+CMD ["python", "app.py"]

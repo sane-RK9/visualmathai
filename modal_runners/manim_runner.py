@@ -2,7 +2,7 @@ import modal
 from pathlib import Path
 import time
 
-dockerfile_path =  "D:"/"ai"/"visualmathai"/ "config" / "docker" / "manim_dockerfile"
+dockerfile_path =  Path("../config/docker/DockerFile.manim")
 
 # --- Define the Modal App and Docker Image ---
 # We define a custom Docker image to ensure Manim and its dependencies (like FFmpeg) are installed.
